@@ -1,0 +1,696 @@
+# インターバル合図アプリを組み立てて APK を作る設定ファイル
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write project files
+        run: |
+          cat > settings.gradle.kts <<'SRC_EOF_0'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "IntervalCue"
+          include(":app")
+          SRC_EOF_0
+          cat > build.gradle.kts <<'SRC_EOF_1'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
+          }
+          SRC_EOF_1
+          cat > gradle.properties <<'SRC_EOF_2'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          SRC_EOF_2
+          mkdir -p app
+          cat > app/build.gradle.kts <<'SRC_EOF_3'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+
+          android {
+              namespace = "com.example.intervalcue"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.example.intervalcue"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+          }
+
+          dependencies {
+              val composeBom = platform("androidx.compose:compose-bom:2024.09.00")
+              implementation(composeBom)
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.activity:activity-compose:1.9.2")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.material3:material3")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+          }
+          SRC_EOF_3
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'SRC_EOF_4'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+              <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="@string/app_name"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.Material.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:screenOrientation="portrait">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".IntervalService"
+                      android:exported="false"
+                      android:foregroundServiceType="specialUse">
+                      <property
+                          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                          android:value="Interval workout timer that sends cue notifications to a paired wearable" />
+                  </service>
+              </application>
+          </manifest>
+          SRC_EOF_4
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/strings.xml <<'SRC_EOF_5'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">インターバル合図</string>
+          </resources>
+          SRC_EOF_5
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/ic_stat.xml <<'SRC_EOF_6'
+          <?xml version="1.0" encoding="utf-8"?>
+          <!-- 通知アイコン（白一色の稲妻） -->
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M13,2L4,14h7l-1,8 9,-12h-7z" />
+          </vector>
+          SRC_EOF_6
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'SRC_EOF_7'
+          <?xml version="1.0" encoding="utf-8"?>
+          <!-- ランチャーアイコン（オレンジの円に稲妻） -->
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="48dp"
+              android:height="48dp"
+              android:viewportWidth="48"
+              android:viewportHeight="48">
+              <path
+                  android:fillColor="#FFE8590C"
+                  android:pathData="M24,2a22,22 0,1 1,0 44a22,22 0,1 1,0 -44z" />
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M26,9L14,27h9l-2,12 13,-18h-9z" />
+          </vector>
+          SRC_EOF_7
+          mkdir -p app/src/main/java/com/example/intervalcue
+          cat > app/src/main/java/com/example/intervalcue/TimerState.kt <<'SRC_EOF_8'
+          package com.example.intervalcue
+
+          import kotlinx.coroutines.flow.MutableStateFlow
+          import kotlinx.coroutines.flow.StateFlow
+
+          enum class Phase { IDLE, READY, WORK, REST, DONE }
+
+          data class TimerState(
+              val phase: Phase = Phase.IDLE,
+              val round: Int = 0,
+              val totalRounds: Int = 0,
+              val remainingSec: Int = 0,
+          )
+
+          /** サービスと画面の間で状態を共有する */
+          object TimerBus {
+              private val _state = MutableStateFlow(TimerState())
+              val state: StateFlow<TimerState> = _state
+
+              fun update(s: TimerState) {
+                  _state.value = s
+              }
+          }
+          SRC_EOF_8
+          mkdir -p app/src/main/java/com/example/intervalcue
+          cat > app/src/main/java/com/example/intervalcue/Cues.kt <<'SRC_EOF_9'
+          package com.example.intervalcue
+
+          import android.annotation.SuppressLint
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.Context
+          import android.content.Intent
+          import androidx.core.app.NotificationCompat
+          import androidx.core.app.NotificationManagerCompat
+
+          /**
+           * 合図の通知。
+           * HUAWEI Health が「新しい通知」をバンドへ転送し、バンドが振動する。
+           * 転送を確実にするため、合図ごとに新しい通知IDで出し、直前の合図は消す。
+           */
+          object Cues {
+              const val CH_CUE = "cue_v1"
+              const val CH_RUNNING = "running_v1"
+
+              private var lastId = -1
+              private var seq = 2000
+
+              fun ensureChannels(ctx: Context) {
+                  val nm = ctx.getSystemService(NotificationManager::class.java)
+                  nm.createNotificationChannel(
+                      NotificationChannel(CH_CUE, "合図（バンドに転送）", NotificationManager.IMPORTANCE_HIGH).apply {
+                          description = "運動・レストの切り替わりで出る通知。HUAWEI Health がバンドへ転送します。"
+                          enableVibration(true)
+                          vibrationPattern = longArrayOf(0, 400, 150, 400)
+                      }
+                  )
+                  nm.createNotificationChannel(
+                      NotificationChannel(CH_RUNNING, "実行中の表示", NotificationManager.IMPORTANCE_LOW).apply {
+                          description = "タイマー実行中に表示される常駐通知（振動しません）"
+                          setShowBadge(false)
+                      }
+                  )
+              }
+
+              fun openAppIntent(ctx: Context): PendingIntent =
+                  PendingIntent.getActivity(
+                      ctx, 0,
+                      Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+
+              @SuppressLint("MissingPermission")
+              /** 合図を1回出す。timeoutMs を過ぎると通知は自動で消える */
+              fun post(ctx: Context, title: String, text: String, timeoutMs: Long? = null) {
+                  ensureChannels(ctx)
+                  val nm = NotificationManagerCompat.from(ctx)
+                  if (!nm.areNotificationsEnabled()) return
+                  if (lastId >= 0) nm.cancel(lastId)
+                  val id = seq++
+                  val n = NotificationCompat.Builder(ctx, CH_CUE)
+                      .setSmallIcon(R.drawable.ic_stat)
+                      .setContentTitle(title)
+                      .setContentText(text)
+                      .setPriority(NotificationCompat.PRIORITY_HIGH)
+                      .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                      .setAutoCancel(true)
+                      .setContentIntent(openAppIntent(ctx))
+                      .apply { if (timeoutMs != null && timeoutMs > 0) setTimeoutAfter(timeoutMs) }
+                      .build()
+                  try {
+                      nm.notify(id, n)
+                      lastId = id
+                  } catch (_: SecurityException) {
+                      // 通知権限がない
+                  }
+              }
+
+              fun cancelLast(ctx: Context) {
+                  if (lastId >= 0) NotificationManagerCompat.from(ctx).cancel(lastId)
+                  lastId = -1
+              }
+          }
+          SRC_EOF_9
+          mkdir -p app/src/main/java/com/example/intervalcue
+          cat > app/src/main/java/com/example/intervalcue/IntervalService.kt <<'SRC_EOF_10'
+          package com.example.intervalcue
+
+          import android.annotation.SuppressLint
+          import android.app.Notification
+          import android.app.Service
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
+          import android.os.Build
+          import android.os.IBinder
+          import android.os.PowerManager
+          import android.os.SystemClock
+          import androidx.core.app.NotificationCompat
+          import androidx.core.app.NotificationManagerCompat
+          import androidx.core.app.ServiceCompat
+          import androidx.core.content.ContextCompat
+          import kotlinx.coroutines.CoroutineScope
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.Job
+          import kotlinx.coroutines.SupervisorJob
+          import kotlinx.coroutines.cancel
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.isActive
+          import kotlinx.coroutines.launch
+
+          /**
+           * 画面を消しても止まらないよう、フォアグラウンドサービスでタイマーを回す。
+           * 時間計測は SystemClock.elapsedRealtime() 基準なので、ずれが積み重ならない。
+           */
+          class IntervalService : Service() {
+
+              companion object {
+                  private const val ACTION_START = "start"
+                  private const val ACTION_STOP = "stop"
+                  private const val ONGOING_ID = 1
+
+                  fun start(ctx: Context, workSec: Int, restSec: Int, rounds: Int, countdownSec: Int) {
+                      val i = Intent(ctx, IntervalService::class.java)
+                          .setAction(ACTION_START)
+                          .putExtra("work", workSec)
+                          .putExtra("rest", restSec)
+                          .putExtra("rounds", rounds)
+                          .putExtra("countdown", countdownSec)
+                      ContextCompat.startForegroundService(ctx, i)
+                  }
+
+                  fun stop(ctx: Context) {
+                      ctx.startService(Intent(ctx, IntervalService::class.java).setAction(ACTION_STOP))
+                  }
+              }
+
+              private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+              private var job: Job? = null
+              private var wakeLock: PowerManager.WakeLock? = null
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  when (intent?.action) {
+                      ACTION_START -> {
+                          val work = intent.getIntExtra("work", 60)
+                          val rest = intent.getIntExtra("rest", 30)
+                          val rounds = intent.getIntExtra("rounds", 5)
+                          val countdown = intent.getIntExtra("countdown", 5)
+
+                          Cues.ensureChannels(this)
+                          ServiceCompat.startForeground(
+                              this, ONGOING_ID,
+                              ongoing("準備中", "まもなく開始", null),
+                              if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+                          )
+                          acquireWakeLock(countdown + rounds * (work + rest) + 60)
+                          job?.cancel()
+                          job = scope.launch { runSession(work, rest, rounds, countdown) }
+                      }
+                      ACTION_STOP -> {
+                          job?.cancel()
+                          Cues.cancelLast(this)
+                          TimerBus.update(TimerState())
+                          shutdown()
+                      }
+                      else -> shutdown()
+                  }
+                  return START_NOT_STICKY
+              }
+
+              private suspend fun runSession(work: Int, rest: Int, rounds: Int, countdown: Int) {
+                  if (countdown > 0) {
+                      Cues.post(this, "まもなく開始", "${countdown}秒後にスタート", countdown * 1000L)
+                      phase(Phase.READY, 0, rounds, countdown, "まもなく開始", "1本目まで")
+                  }
+                  for (r in 1..rounds) {
+                      Cues.post(this, "▶ 運動 $r/$rounds", "${work}秒", work * 1000L)
+                      phase(Phase.WORK, r, rounds, work, "運動 $r/$rounds", "残り")
+                      if (r < rounds && rest > 0) {
+                          Cues.post(this, "■ レスト", "${rest}秒　次は ${r + 1}/$rounds", rest * 1000L)
+                          phase(Phase.REST, r, rounds, rest, "レスト", "次は ${r + 1}/$rounds")
+                      }
+                  }
+                  Cues.post(this, "✓ 完了", "${rounds}本 おつかれさまでした", 60_000L)
+                  TimerBus.update(TimerState(Phase.DONE, rounds, rounds, 0))
+                  shutdown()
+              }
+
+              /** 1フェーズ分待つ。画面表示用の残り秒数は0.2秒ごとに更新 */
+              @SuppressLint("MissingPermission")
+              private suspend fun phase(p: Phase, round: Int, total: Int, sec: Int, title: String, sub: String) {
+                  val end = SystemClock.elapsedRealtime() + sec * 1000L
+                  // 常駐通知はフェーズの切り替わりでのみ更新（毎秒更新するとバンドが鳴る恐れがあるため）
+                  val wallEnd = System.currentTimeMillis() + sec * 1000L
+                  NotificationManagerCompat.from(this).let {
+                      try { it.notify(ONGOING_ID, ongoing(title, sub, wallEnd)) } catch (_: SecurityException) {}
+                  }
+                  while (scope.isActive) {
+                      val left = end - SystemClock.elapsedRealtime()
+                      if (left <= 0) break
+                      TimerBus.update(TimerState(p, round, total, ((left + 999) / 1000).toInt()))
+                      delay(minOf(left, 200L))
+                  }
+              }
+
+              private fun ongoing(title: String, text: String, countdownTo: Long?): Notification =
+                  NotificationCompat.Builder(this, Cues.CH_RUNNING)
+                      .setSmallIcon(R.drawable.ic_stat)
+                      .setContentTitle(title)
+                      .setContentText(text)
+                      .setOngoing(true)
+                      .setOnlyAlertOnce(true)
+                      .setSilent(true)
+                      .setContentIntent(Cues.openAppIntent(this))
+                      .apply {
+                          if (countdownTo != null) {
+                              setWhen(countdownTo)
+                              setShowWhen(true)
+                              setUsesChronometer(true)
+                              setChronometerCountDown(true)
+                          }
+                      }
+                      .build()
+
+              private fun acquireWakeLock(maxSec: Int) {
+                  releaseWakeLock()
+                  val pm = getSystemService(PowerManager::class.java)
+                  wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IntervalCue:timer").apply {
+                      setReferenceCounted(false)
+                      acquire(maxSec * 1000L)
+                  }
+              }
+
+              private fun releaseWakeLock() {
+                  wakeLock?.let { if (it.isHeld) it.release() }
+                  wakeLock = null
+              }
+
+              private fun shutdown() {
+                  releaseWakeLock()
+                  ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                  stopSelf()
+              }
+
+              override fun onDestroy() {
+                  scope.cancel()
+                  releaseWakeLock()
+                  super.onDestroy()
+              }
+          }
+          SRC_EOF_10
+          mkdir -p app/src/main/java/com/example/intervalcue
+          cat > app/src/main/java/com/example/intervalcue/MainActivity.kt <<'SRC_EOF_11'
+          package com.example.intervalcue
+
+          import android.Manifest
+          import android.content.Context
+          import android.content.pm.PackageManager
+          import android.os.Build
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.isSystemInDarkTheme
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material3.AssistChip
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.ExperimentalMaterial3Api
+          import androidx.compose.material3.ButtonDefaults
+          import androidx.compose.material3.FilledTonalIconButton
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.OutlinedButton
+          import androidx.compose.material3.Surface
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.material3.darkColorScheme
+          import androidx.compose.material3.lightColorScheme
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.collectAsState
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableIntStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.content.ContextCompat
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  Cues.ensureChannels(this)
+                  setContent {
+                      val dark = isSystemInDarkTheme()
+                      MaterialTheme(colorScheme = if (dark) darkColorScheme(primary = Color(0xFFFF8A4C)) else lightColorScheme(primary = Color(0xFFD9480F))) {
+                          Surface(Modifier.fillMaxSize()) { App() }
+                      }
+                  }
+              }
+          }
+
+          private val WORK_COLOR = Color(0xFFE8590C)
+          private val REST_COLOR = Color(0xFF1C7ED6)
+          private val READY_COLOR = Color(0xFF868E96)
+          private val DONE_COLOR = Color(0xFF2F9E44)
+
+          private data class Preset(val name: String, val work: Int, val rest: Int, val rounds: Int)
+
+          private val PRESETS = listOf(
+              Preset("60/30 ×5", 60, 30, 5),
+              Preset("タバタ 20/10 ×8", 20, 10, 8),
+              Preset("30/30 ×10", 30, 30, 10),
+              Preset("40/20 ×6", 40, 20, 6),
+          )
+
+          @OptIn(ExperimentalMaterial3Api::class)
+          @Composable
+          private fun App() {
+              val ctx = LocalContext.current
+              val prefs = remember { ctx.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+
+              var work by remember { mutableIntStateOf(prefs.getInt("work", 60)) }
+              var rest by remember { mutableIntStateOf(prefs.getInt("rest", 30)) }
+              var rounds by remember { mutableIntStateOf(prefs.getInt("rounds", 5)) }
+              var countdown by remember { mutableIntStateOf(prefs.getInt("countdown", 5)) }
+
+              fun save() = prefs.edit()
+                  .putInt("work", work).putInt("rest", rest)
+                  .putInt("rounds", rounds).putInt("countdown", countdown)
+                  .apply()
+
+              val state by TimerBus.state.collectAsState()
+              val running = state.phase == Phase.READY || state.phase == Phase.WORK || state.phase == Phase.REST
+
+              val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+              LaunchedEffect(Unit) {
+                  if (Build.VERSION.SDK_INT >= 33 &&
+                      ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                  ) permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+              }
+
+              Column(
+                  Modifier
+                      .fillMaxSize()
+                      .verticalScroll(rememberScrollState())
+                      .padding(horizontal = 20.dp, vertical = 24.dp),
+                  verticalArrangement = Arrangement.spacedBy(18.dp)
+              ) {
+                  Text("インターバル合図", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+                  StatusPanel(state, work, rest, rounds)
+
+                  if (!running) {
+                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                          PRESETS.take(2).forEach { p ->
+                              AssistChip(onClick = { work = p.work; rest = p.rest; rounds = p.rounds; save() }, label = { Text(p.name) })
+                          }
+                      }
+                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                          PRESETS.drop(2).forEach { p ->
+                              AssistChip(onClick = { work = p.work; rest = p.rest; rounds = p.rounds; save() }, label = { Text(p.name) })
+                          }
+                      }
+                  }
+
+                  Stepper("運動", work, "秒", 5, 5..3600, !running) { work = it; save() }
+                  Stepper("レスト", rest, "秒", 5, 0..3600, !running) { rest = it; save() }
+                  Stepper("回数", rounds, "回", 1, 1..99, !running) { rounds = it; save() }
+                  Stepper("開始前カウント", countdown, "秒", 1, 0..60, !running) { countdown = it; save() }
+
+                  val total = countdown + rounds * work + (rounds - 1).coerceAtLeast(0) * rest
+                  Text("合計 ${fmt(total)}（開始前カウント込み）", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                  if (!running) {
+                      Button(
+                          onClick = { IntervalService.start(ctx, work, rest, rounds, countdown) },
+                          modifier = Modifier.fillMaxWidth().height(56.dp)
+                      ) { Text("スタート", fontSize = 18.sp) }
+                  } else {
+                      OutlinedButton(
+                          onClick = { IntervalService.stop(ctx) },
+                          modifier = Modifier.fillMaxWidth().height(56.dp),
+                          colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                      ) { Text("中止", fontSize = 18.sp) }
+                  }
+
+                  TextButton(onClick = { Cues.post(ctx, "テスト合図", "バンドが振動すれば設定OK", 15_000L) }) {
+                      Text("テスト通知を送る（バンドの振動確認）")
+                  }
+                  Text(
+                      "合図はスマホの通知としてHUAWEI Healthからバンドへ転送されます。HUAWEI Health の通知設定でこのアプリをオンにしてください。",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant
+                  )
+              }
+          }
+
+          @Composable
+          private fun StatusPanel(s: TimerState, work: Int, rest: Int, rounds: Int) {
+              val (label, color) = when (s.phase) {
+                  Phase.IDLE -> "待機中" to READY_COLOR
+                  Phase.READY -> "まもなく開始" to READY_COLOR
+                  Phase.WORK -> "運動" to WORK_COLOR
+                  Phase.REST -> "レスト" to REST_COLOR
+                  Phase.DONE -> "完了" to DONE_COLOR
+              }
+              val big = when (s.phase) {
+                  Phase.IDLE -> fmt(work)
+                  Phase.DONE -> "✓"
+                  else -> fmt(s.remainingSec)
+              }
+              val sub = when (s.phase) {
+                  Phase.IDLE -> "運動 ${work}秒 / レスト ${rest}秒 × ${rounds}回"
+                  Phase.READY -> "1本目まで"
+                  Phase.WORK, Phase.REST -> "${s.round} / ${s.totalRounds} 本目"
+                  Phase.DONE -> "${s.totalRounds}本 おつかれさまでした"
+              }
+              Box(
+                  Modifier
+                      .fillMaxWidth()
+                      .background(color.copy(alpha = 0.14f), RoundedCornerShape(20.dp))
+                      .padding(20.dp)
+              ) {
+                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                      Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                      Text(big, fontSize = 72.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color)
+                      Text(sub, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                  }
+              }
+          }
+
+          @Composable
+          private fun Stepper(
+              label: String, value: Int, unit: String, step: Int, range: IntRange,
+              enabled: Boolean, onChange: (Int) -> Unit
+          ) {
+              Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                  Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                  FilledTonalIconButton(
+                      onClick = { onChange((value - step).coerceIn(range)) },
+                      enabled = enabled && value > range.first,
+                      modifier = Modifier.size(44.dp)
+                  ) { Text("−", fontSize = 22.sp) }
+                  Text(
+                      "$value$unit",
+                      modifier = Modifier.width(96.dp),
+                      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                      fontSize = 20.sp,
+                      fontFamily = FontFamily.Monospace
+                  )
+                  FilledTonalIconButton(
+                      onClick = { onChange((value + step).coerceIn(range)) },
+                      enabled = enabled && value < range.last,
+                      modifier = Modifier.size(44.dp)
+                  ) { Text("+", fontSize = 22.sp) }
+              }
+          }
+
+          private fun fmt(sec: Int): String = "%d:%02d".format(sec / 60, sec % 60)
+          SRC_EOF_11
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build
+        run: gradle --no-daemon assembleDebug
+
+      - name: Publish APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk IntervalCue.apk
+          gh release create "build-${{ github.run_number }}" IntervalCue.apk --repo "${{ github.repository }}" --title "インターバル合図 ビルド ${{ github.run_number }}" --notes "IntervalCue.apk をダウンロードしてインストールしてください。"
